@@ -324,6 +324,65 @@ gcloud run deploy kasparro-backend \
   --platform managed
 ```
 
+## 🌐 Live Deployment & Operations
+
+### Current Production Instance
+- **Public API Base**: https://kasparro-backend-latest-ly2e.onrender.com
+- **Docker Image**: saba067/kasparro-backend:latest (Docker Hub)
+- **Database**: Render PostgreSQL (free tier)
+- **Platform**: Render.com (free tier web service + scheduled tasks)
+
+### Live Endpoints
+```
+Health Check:
+  GET https://kasparro-backend-latest-ly2e.onrender.com/health
+
+Normalized Data (paginated):
+  GET https://kasparro-backend-latest-ly2e.onrender.com/data?limit=5&offset=0
+
+ETL Statistics:
+  GET https://kasparro-backend-latest-ly2e.onrender.com/stats
+
+API Documentation:
+  https://kasparro-backend-latest-ly2e.onrender.com/docs
+```
+
+### Scheduled ETL Runs
+- **Schedule**: Every 6 hours (via GitHub Actions)
+- **Trigger**: Calls `/etl/run` endpoint asynchronously
+- **Workflow File**: `.github/workflows/etl-cron.yml`
+- **Configuration**: 
+  - Set GitHub repo secret `ETL_ENDPOINT` to your `/etl/run` URL
+  - Optional: Set `API_KEY` secret for GitHub API rate limit elevation
+- **Manual Trigger**: GitHub → Actions → ETL Cron → Run workflow
+
+### Recent Deployment Status
+```
+✅ 13/13 tests passing
+✅ 52% code coverage
+✅ 208 total records ingested (100 JSONPlaceholder + 1 GitHub + 5 CSV + normalized)
+✅ 106 records normalized
+✅ Public API responding with <15ms latency
+✅ Incremental checkpoints active
+```
+
+### Triggering ETL Manually
+```bash
+# HTTP GET (recommended for cron)
+curl https://kasparro-backend-latest-ly2e.onrender.com/etl/run
+
+# HTTP POST
+curl -X POST https://kasparro-backend-latest-ly2e.onrender.com/etl/run
+
+# Response: {"status": "accepted"}
+# Check /stats after ~30s to see updated counts
+```
+
+### Monitoring
+- **Render Logs**: Dashboard → kasparro_backend → Logs
+- **GitHub Actions Logs**: GitHub → Actions → ETL Cron → last run
+- **Database Queries**: Via Render PostgreSQL dashboard
+
 ## 🔐 Security Best Practices
 
 ✅ **Implemented**
