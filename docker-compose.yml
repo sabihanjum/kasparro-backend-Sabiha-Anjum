@@ -5,9 +5,9 @@ services:
     image: postgres:15-alpine
     container_name: kasparro_postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: kasparro
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-kasparro}
     ports:
       - "5432:5432"
     volumes:
@@ -22,11 +22,11 @@ services:
     build: .
     container_name: kasparro_backend
     environment:
-      DATABASE_URL: postgresql://postgres:password@postgres:5432/kasparro
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-kasparro}
       API_KEY: ${API_KEY:-test-key}
-      ENVIRONMENT: production
-      DEBUG: "false"
-      LOG_LEVEL: INFO
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"
     depends_on:

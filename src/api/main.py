@@ -15,6 +15,7 @@ from src.core.models import ETLRun, NormalizedData
 from src.schemas.data import HealthStatus, PaginatedResponse, ETLStats
 from src.core.etl_config import ETL_SOURCES
 from src.ingestion.runner import run_etl_with_backoff
+from src.core.scheduler import start_scheduler, stop_scheduler
 
 # Setup logging
 setup_logging()
@@ -33,13 +34,27 @@ app.include_router(router)
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database on startup."""
+    """Initialize database and scheduler on startup."""
     try:
         init_db()
-        logger.info("Application startup complete")
+        logger.info("Database initialized")
+        
+        # Start internal scheduler for autonomous ETL
+        await start_scheduler()
+        logger.info("Internal ETL scheduler started")
     except Exception as e:
         logger.error(f"Startup error: {e}")
         raise
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Gracefully shutdown scheduler."""
+    try:
+        await stop_scheduler()
+        logger.info("Scheduler shutdown complete")
+    except Exception as e:
+        logger.error(f"Shutdown error: {e}")
 
 
 @app.get("/health", response_model=HealthStatus)
