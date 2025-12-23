@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Enum,
     Integer,
@@ -60,6 +61,9 @@ class NormalizedData(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    # Soft delete support
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
 
 class ETLCheckpoint(Base):
@@ -95,3 +99,4 @@ class ETLRun(Base):
     status: Mapped[str] = mapped_column(String(20))  # success, failed, in_progress
     error_message: Mapped[str] = mapped_column(Text, nullable=True)
     run_metadata: Mapped[dict] = mapped_column(JSON, nullable=True)
+
