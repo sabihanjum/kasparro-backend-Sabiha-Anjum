@@ -1,0 +1,29 @@
+name: ETL Cron
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger-etl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ETL endpoint
+        env:
+          ETL_ENDPOINT: ${{ secrets.ETL_ENDPOINT }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          set -euo pipefail
+          echo "Triggering ETL at ${ETL_ENDPOINT}"
+          if [ -z "${ETL_ENDPOINT:-}" ]; then
+            echo "ETL_ENDPOINT secret is not set. Configure it to your /etl/run URL." >&2
+            exit 1
+          fi
+          if [ -n "${API_KEY:-}" ]; then
+            curl -fsS -X POST -H "Authorization: Bearer ${API_KEY}" "${ETL_ENDPOINT}" \
+              || curl -fsS -H "Authorization: Bearer ${API_KEY}" "${ETL_ENDPOINT}"
+          else
+            curl -fsS -X POST "${ETL_ENDPOINT}" || curl -fsS "${ETL_ENDPOINT}"
+          fi
+          echo "ETL triggered successfully."

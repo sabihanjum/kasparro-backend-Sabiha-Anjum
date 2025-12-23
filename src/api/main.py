@@ -4,7 +4,7 @@ import time
 import uuid
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,8 @@ from src.core.database import get_db, check_db_connection, init_db
 from src.core.logging_config import setup_logging
 from src.core.models import ETLRun, NormalizedData
 from src.schemas.data import HealthStatus, PaginatedResponse, ETLStats
+from src.core.etl_config import ETL_SOURCES
+from src.ingestion.runner import run_etl_with_backoff
 
 # Setup logging
 setup_logging()
@@ -170,6 +172,20 @@ async def get_etl_stats(
         
     except Exception as e:
         logger.error(f"Error fetching stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.api_route("/etl/run", methods=["GET", "POST"])
+async def trigger_etl(background_tasks: BackgroundTasks):
+    """Trigger ETL asynchronously and return immediately.
+
+    Useful for manual runs and for Render Cron HTTP jobs.
+    """
+    try:
+        background_tasks.add_task(run_etl_with_backoff, ETL_SOURCES)
+        return {"status": "accepted"}
+    except Exception as e:
+        logger.error(f"Failed to enqueue ETL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
