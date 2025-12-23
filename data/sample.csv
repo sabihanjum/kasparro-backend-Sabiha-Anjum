@@ -1,0 +1,6 @@
+id,title,description,content,author,published_at,url,category
+1,Sample Article 1,First sample article,This is the content of the first sample article,John Doe,2024-01-15,https://example.com/article1,news
+2,Sample Article 2,Second sample article,This is the content of the second sample article,Jane Smith,2024-01-16,https://example.com/article2,technology
+3,Sample Article 3,Third sample article,This is the content of the third sample article,Bob Johnson,2024-01-17,https://example.com/article3,business
+4,Sample Article 4,Fourth sample article,This is the content of the fourth sample article,Alice Williams,2024-01-18,https://example.com/article4,science
+5,Sample Article 5,Fifth sample article,This is the content of the fifth sample article,Charlie Brown,2024-01-19,https://example.com/article5,entertainment
