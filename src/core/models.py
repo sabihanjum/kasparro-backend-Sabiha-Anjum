@@ -6,9 +6,11 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
+    Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -50,8 +52,17 @@ class NormalizedData(Base):
     """Normalized and unified data across all sources."""
 
     __tablename__ = "normalized_data"
+    __table_args__ = (
+        UniqueConstraint('source', 'source_id', name='uix_source_source_id'),
+        Index('ix_normalized_data_entity_id', 'entity_id'),
+        Index('ix_normalized_data_content_hash', 'content_hash'),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Canonical entity ID for cross-source unification
+    entity_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # Content hash for duplicate detection
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     source: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     source_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     data: Mapped[dict] = mapped_column(JSON, nullable=False)

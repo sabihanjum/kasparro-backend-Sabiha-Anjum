@@ -12,7 +12,7 @@ class Config:
 
     # Database
     DATABASE_URL: str = os.getenv(
-        "DATABASE_URL", "postgresql://postgres:password@localhost:5432/kasparro"
+        "DATABASE_URL", "postgresql://postgres@localhost:5432/kasparro"
     )
     
     # API Configuration

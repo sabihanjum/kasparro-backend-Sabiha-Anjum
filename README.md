@@ -1,5 +1,7 @@
 # Kasparro Backend - Production Data Ingestion System
 
+> **🎉 Latest Update (Dec 24, 2025)**: Evaluation feedback addressed! Entity unification now implemented with cross-source duplicate detection. See [EVALUATION_FIXES_SUMMARY.md](EVALUATION_FIXES_SUMMARY.md) for details.
+
 A production-grade backend system for ingesting data from multiple sources (APIs, CSV files) with incremental processing, comprehensive API endpoints, and cloud deployment support.
 
 ## 🎯 Architecture Overview

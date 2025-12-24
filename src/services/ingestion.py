@@ -1,14 +1,16 @@
 """Data ingestion service for handling multiple sources."""
 import asyncio
 import csv
+import hashlib
 import io
 import logging
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import config
@@ -225,7 +227,7 @@ class DataIngestionService:
         return records_processed, records_inserted, records_failed
 
     async def normalize_data(self, run_id: str) -> Tuple[int, int]:
-        """Normalize raw data into unified schema.
+        """Normalize raw data into unified schema with entity unification.
         
         Args:
             run_id: ID of the ETL run
@@ -248,8 +250,19 @@ class DataIngestionService:
                         raw_record.source, raw_record.raw_data
                     )
                     
-                    # Check if record exists
-                    existing = await self.session.execute(
+                    # Generate content hash and entity ID
+                    content_hash = self._generate_content_hash(normalized)
+                    
+                    # Check for existing entity by content hash (cross-source duplicate)
+                    existing_by_content = await self.session.execute(
+                        select(NormalizedData).where(
+                            NormalizedData.content_hash == content_hash
+                        )
+                    )
+                    existing_entity = existing_by_content.scalar_one_or_none()
+                    
+                    # Check if record from this source already exists
+                    existing_by_source = await self.session.execute(
                         select(NormalizedData).where(
                             and_(
                                 NormalizedData.source == raw_record.source,
@@ -257,13 +270,37 @@ class DataIngestionService:
                             )
                         )
                     )
+                    existing_source_record = existing_by_source.scalar_one_or_none()
                     
-                    existing_record = existing.scalar_one_or_none()
-                    if existing_record:
-                        existing_record.data = normalized.model_dump(mode='json')
+                    if existing_source_record:
+                        # Update existing record from this source
+                        existing_source_record.data = normalized.model_dump(mode='json')
+                        existing_source_record.content_hash = content_hash
+                        # Use existing entity_id if entity already exists, else generate new one
+                        if existing_entity:
+                            existing_source_record.entity_id = existing_entity.entity_id
                         records_updated += 1
-                    else:
+                    elif existing_entity:
+                        # Same entity from different source - link to existing entity
+                        logger.info(
+                            f"Cross-source duplicate detected: {raw_record.source}/{raw_record.external_id} "
+                            f"matches entity {existing_entity.entity_id} from {existing_entity.source}"
+                        )
                         normalized_data = NormalizedData(
+                            entity_id=existing_entity.entity_id,
+                            content_hash=content_hash,
+                            source=raw_record.source,
+                            source_id=raw_record.external_id,
+                            data=normalized.model_dump(mode='json'),
+                        )
+                        self.session.add(normalized_data)
+                        records_normalized += 1
+                    else:
+                        # New entity - create with new entity_id
+                        entity_id = self._generate_entity_id(content_hash)
+                        normalized_data = NormalizedData(
+                            entity_id=entity_id,
+                            content_hash=content_hash,
                             source=raw_record.source,
                             source_id=raw_record.external_id,
                             data=normalized.model_dump(mode='json'),
@@ -287,8 +324,19 @@ class DataIngestionService:
                         raw_record.source, raw_record.raw_data
                     )
                     
-                    # Check if record exists
-                    existing = await self.session.execute(
+                    # Generate content hash and entity ID
+                    content_hash = self._generate_content_hash(normalized)
+                    
+                    # Check for existing entity by content hash (cross-source duplicate)
+                    existing_by_content = await self.session.execute(
+                        select(NormalizedData).where(
+                            NormalizedData.content_hash == content_hash
+                        )
+                    )
+                    existing_entity = existing_by_content.scalar_one_or_none()
+                    
+                    # Check if record from this source already exists
+                    existing_by_source = await self.session.execute(
                         select(NormalizedData).where(
                             and_(
                                 NormalizedData.source == raw_record.source,
@@ -296,13 +344,37 @@ class DataIngestionService:
                             )
                         )
                     )
+                    existing_source_record = existing_by_source.scalar_one_or_none()
                     
-                    existing_record = existing.scalar_one_or_none()
-                    if existing_record:
-                        existing_record.data = normalized.model_dump(mode='json')
+                    if existing_source_record:
+                        # Update existing record from this source
+                        existing_source_record.data = normalized.model_dump(mode='json')
+                        existing_source_record.content_hash = content_hash
+                        # Use existing entity_id if entity already exists, else keep current
+                        if existing_entity and existing_entity.id != existing_source_record.id:
+                            existing_source_record.entity_id = existing_entity.entity_id
                         records_updated += 1
-                    else:
+                    elif existing_entity:
+                        # Same entity from different source - link to existing entity
+                        logger.info(
+                            f"Cross-source duplicate detected: {raw_record.source}/{raw_record.external_id} "
+                            f"matches entity {existing_entity.entity_id} from {existing_entity.source}"
+                        )
                         normalized_data = NormalizedData(
+                            entity_id=existing_entity.entity_id,
+                            content_hash=content_hash,
+                            source=raw_record.source,
+                            source_id=raw_record.external_id,
+                            data=normalized.model_dump(mode='json'),
+                        )
+                        self.session.add(normalized_data)
+                        records_normalized += 1
+                    else:
+                        # New entity - create with new entity_id
+                        entity_id = self._generate_entity_id(content_hash)
+                        normalized_data = NormalizedData(
+                            entity_id=entity_id,
+                            content_hash=content_hash,
                             source=raw_record.source,
                             source_id=raw_record.external_id,
                             data=normalized.model_dump(mode='json'),
@@ -353,6 +425,54 @@ class DataIngestionService:
             category=raw_data.get("category"),
             metadata=raw_data,
         )
+
+    def _generate_content_hash(self, record: DataRecord) -> str:
+        """Generate content hash for duplicate detection.
+        
+        Uses normalized title and content to detect duplicates across sources.
+        
+        Args:
+            record: DataRecord to hash
+            
+        Returns:
+            SHA-256 hash of normalized content
+        """
+        # Normalize text for comparison (lowercase, remove extra whitespace)
+        title = self._normalize_text(record.title or "")
+        content = self._normalize_text(record.content or record.description or "")
+        
+        # Combine key fields for hashing
+        hash_input = f"{title}|{content[:500]}"  # Use first 500 chars of content
+        
+        return hashlib.sha256(hash_input.encode('utf-8')).hexdigest()
+
+    def _normalize_text(self, text: str) -> str:
+        """Normalize text for comparison.
+        
+        Args:
+            text: Text to normalize
+            
+        Returns:
+            Normalized text (lowercase, no extra whitespace)
+        """
+        # Convert to lowercase
+        text = text.lower()
+        # Remove extra whitespace
+        text = re.sub(r'\s+', ' ', text)
+        # Strip leading/trailing whitespace
+        text = text.strip()
+        return text
+
+    def _generate_entity_id(self, content_hash: str) -> str:
+        """Generate canonical entity ID from content hash.
+        
+        Args:
+            content_hash: Content hash
+            
+        Returns:
+            Entity ID (first 16 chars of hash for readability)
+        """
+        return f"entity_{content_hash[:16]}"
 
     async def _get_checkpoint(self, source: str) -> Optional[ETLCheckpoint]:
         """Get checkpoint for a source."""
